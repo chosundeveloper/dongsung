@@ -6,19 +6,14 @@ deploy-production:
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh-client
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
     - ssh-keyscan -H $DEPLOY_SERVER >> ~/.ssh/known_hosts 2>/dev/null || true
   script:
-    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "
-        cd $DEPLOY_PATH &&
-        git pull &&
-        docker compose down &&
+    - |
+      ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'DEPLOY_SCRIPT'
+        cd $DEPLOY_PATH
+        git pull
+        docker compose down
         docker compose up -d
-      "
-  after_script:
-    - rm -f ~/.ssh/id_rsa
+      DEPLOY_SCRIPT
   only:
     - main
