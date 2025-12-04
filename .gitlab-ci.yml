@@ -1,6 +1,41 @@
 stages:
+  - build
+  - push
   - deploy
   - monitor
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+
+build-image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "Building Docker image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest
+  only:
+    - main
+
+push-image:
+  stage: push
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - echo "Pushing image to registry: $CI_REGISTRY_IMAGE"
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - echo "✅ Image pushed successfully to $CI_REGISTRY_IMAGE"
+  only:
+    - main
 
 deploy-production:
   stage: deploy
@@ -14,12 +49,23 @@ deploy-production:
         cd $DEPLOY_PATH
         git fetch --all
         git checkout main
+        git pull
+
+        # Update docker-compose.yml with new image from registry
+        sed -i "s|image:.*dongsung.*|image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA|g" docker-compose.yml
+
+        # Deploy with registry image
         docker compose down --remove-orphans
-        docker compose build --no-cache
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+        docker compose pull
         docker compose up -d
+
+        echo "✅ Deployment completed with image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
       DEPLOY_SCRIPT
   only:
     - main
+  dependencies:
+    - push-image
 
 monitor-logs:
   stage: monitor
@@ -31,8 +77,8 @@ monitor-logs:
     - |
       echo "📊 Starting log monitoring..."
 
-      # Fetch recent logs from backend container
-      RECENT_LOGS=$(sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "cd $DEPLOY_PATH && docker logs dongsung-backend --tail 100 2>&1")
+      # Fetch recent logs from container
+      RECENT_LOGS=$(sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "cd $DEPLOY_PATH && docker logs dongsung-app --tail 100 2>&1")
 
       # Count auth failures
       AUTH_FAILS=$(echo "$RECENT_LOGS" | grep -c '\[AUTH_FAIL\]' || true)

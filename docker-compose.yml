@@ -1,7 +1,7 @@
 services:
   backend:
-    build: .
-    image: dongsung:latest
+    image: registry.gitlab.chosundev.cloud/services-deletion_scheduled-35/dongsung:latest
+    pull_policy: always
     container_name: dongsung-backend
     restart: always
     environment:
@@ -15,8 +15,8 @@ services:
       - traefik-network
 
   frontend:
-    build: .
-    image: dongsung:latest
+    image: registry.gitlab.chosundev.cloud/services-deletion_scheduled-35/dongsung:latest
+    pull_policy: always
     container_name: dongsung-app
     restart: always
     environment:
