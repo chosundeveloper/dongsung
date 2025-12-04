@@ -1,11 +1,13 @@
 services:
   dongsung:
-    build: .
-    container_name: dongsung
-    restart: unless-stopped
+    image: e669204ed3c8
+    container_name: dongsung-app
+    restart: always
     environment:
       - PORT=3000
       - NODE_ENV=production
+    volumes:
+      - ./dist:/app/dist:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/health"]
       interval: 10s
