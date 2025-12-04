@@ -1,0 +1,145 @@
+# GitLab CI/CD Pipeline - dongsung
+# Auto-generated: 2025-12-04 13:59:44
+
+stages:
+  - build
+  - test
+  - push
+  - deploy
+
+variables:
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_TLS_VERIFY: ""
+  DOCKER_CERT_PATH: ""
+  IMAGE_NAME: "dongsung-app"
+  SERVICE_NAME: "dongsung"
+  DOMAIN: "dongsung.chosundev.cloud"
+  REGISTRY: "172.30.1.46:8929"
+  REGISTRY_URL: "$REGISTRY/$CI_PROJECT_NAMESPACE/$IMAGE_NAME"
+
+# Build Stage
+build:docker:
+  stage: build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache bash
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
+  script:
+    - echo "📦 Building Docker image: $IMAGE_NAME"
+    - docker build -t $REGISTRY_URL:$CI_COMMIT_SHORT_SHA -t $REGISTRY_URL:latest .
+    - echo "✅ Build completed"
+  after_script:
+    - docker logout $REGISTRY || true
+  only:
+    - main
+    - master
+    - develop
+  tags:
+    - docker
+
+# Test Stage
+test:unit:
+  stage: test
+  image: node:18-alpine
+  before_script:
+    - npm ci --prefer-offline
+  script:
+    - npm run test --if-present || echo "No tests defined"
+    - npm run lint --if-present || echo "No lint defined"
+  allow_failure: true
+  only:
+    - main
+    - master
+    - develop
+
+# Push Stage
+push:registry:
+  stage: push
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache bash
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY
+  script:
+    - echo "📤 Pushing image to registry..."
+    - docker push $REGISTRY_URL:$CI_COMMIT_SHORT_SHA
+    - docker push $REGISTRY_URL:latest
+    - echo "✅ Image pushed successfully"
+  after_script:
+    - docker logout $REGISTRY || true
+  only:
+    - main
+    - master
+    - develop
+  tags:
+    - docker
+
+# Production Deployment
+deploy:production:
+  stage: deploy
+  image: alpine:latest
+  environment:
+    name: production
+    url: https://$DOMAIN
+    deployment_tier: production
+  before_script:
+    - apk add --no-cache openssh-client bash
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$DEPLOY_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $DEPLOY_SERVER >> ~/.ssh/known_hosts 2>/dev/null || true
+    - echo "Host *" >> ~/.ssh/config
+    - echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+    - chmod 600 ~/.ssh/config
+  script:
+    - |
+      ssh -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_SERVER "
+        cd ~/services && \
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY && \
+        docker pull $REGISTRY_URL:latest && \
+        docker-compose up -d $SERVICE_NAME && \
+        echo '✅ Deployment completed' && \
+        docker-compose ps $SERVICE_NAME
+      "
+  after_script:
+    - rm -f ~/.ssh/id_rsa
+  when: manual
+  only:
+    - main
+    - master
+  tags:
+    - docker
+
+# Staging Deployment
+deploy:staging:
+  stage: deploy
+  image: alpine:latest
+  environment:
+    name: staging
+    url: https://$SERVICE_NAME-staging.chosundev.cloud
+    deployment_tier: staging
+  before_script:
+    - apk add --no-cache openssh-client bash
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$DEPLOY_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $DEPLOY_SERVER >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - |
+      ssh -i ~/.ssh/id_rsa $DEPLOY_USER@$DEPLOY_SERVER "
+        cd ~/services && \
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $REGISTRY && \
+        docker pull $REGISTRY_URL:latest && \
+        docker-compose up -d $SERVICE_NAME && \
+        echo '✅ Staging deployment completed'
+      "
+  after_script:
+    - rm -f ~/.ssh/id_rsa
+  when: on_success
+  only:
+    - develop
+  tags:
+    - docker

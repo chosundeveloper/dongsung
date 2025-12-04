@@ -1,0 +1,26 @@
+services:
+  dongsung:
+    build: .
+    container_name: dongsung
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dongsung.rule=Host(`dongsung.chosundev.cloud`)"
+      - "traefik.http.routers.dongsung.entrypoints=websecure"
+      - "traefik.http.routers.dongsung.tls=true"
+      - "traefik.http.services.dongsung.loadbalancer.server.port=3000"
+    networks:
+      - traefik-network
+
+networks:
+  traefik-network:
+    external: true
