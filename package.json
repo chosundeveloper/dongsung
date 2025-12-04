@@ -1,0 +1,13 @@
+{
+  "name": "dongsung",
+  "version": "1.0.0",
+  "description": "Service for dongsung",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo 'No tests yet'",
+    "dev": "node index.js"
+  },
+  "dependencies": {},
+  "license": "MIT"
+}
