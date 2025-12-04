@@ -11,8 +11,7 @@ deploy-production:
     - |
       ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'DEPLOY_SCRIPT'
         cd $DEPLOY_PATH
-        git pull
-        docker compose down
+        docker compose down --remove-orphans
         docker compose up -d
       DEPLOY_SCRIPT
   only:
