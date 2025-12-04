@@ -25,39 +25,47 @@ monitor-logs:
   stage: monitor
   image: alpine:latest
   before_script:
-    - apk add --no-cache openssh-client sshpass curl
+    - apk add --no-cache openssh-client sshpass curl grep
     - ssh-keyscan -H $DEPLOY_SERVER >> ~/.ssh/known_hosts 2>/dev/null || true
   script:
     - |
+      echo "📊 Starting log monitoring..."
+
       # Fetch recent logs from backend container
-      RECENT_LOGS=$(sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'LOG_SCRIPT'
-        cd $DEPLOY_PATH
-        docker logs dongsung-backend --tail 100
-      LOG_SCRIPT
-      )
+      RECENT_LOGS=$(sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "cd $DEPLOY_PATH && docker logs dongsung-backend --tail 100 2>&1")
 
-      # Check for auth failures
-      AUTH_FAILS=$(echo "$RECENT_LOGS" | grep -c "\[AUTH_FAIL\]" || echo "0")
+      # Count auth failures
+      AUTH_FAILS=$(echo "$RECENT_LOGS" | grep -c '\[AUTH_FAIL\]' || true)
 
-      if [ "$AUTH_FAILS" -gt "5" ]; then
-        echo "⚠️ WARNING: Multiple authentication failures detected: $AUTH_FAILS"
+      echo ""
+      echo "=== 🔍 로그 분석 결과 ==="
+      echo "인증 실패: $AUTH_FAILS건"
 
-        # Send notification (if webhook is configured)
-        if [ -n "$SLACK_WEBHOOK_URL" ]; then
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "{\"text\": \"🚨 dongsung-backend: $AUTH_FAILS auth failures in last 100 logs\"}"
-        fi
+      if [ "$AUTH_FAILS" -gt "0" ]; then
+        echo ""
+        echo "⚠️  인증 실패 내역:"
+        echo "$RECENT_LOGS" | grep '\[AUTH_FAIL\]' || true
       fi
 
-      # Check for errors
-      ERRORS=$(echo "$RECENT_LOGS" | grep -i "error\|failed" | grep -v "DEBUG" | head -10)
+      # Check for critical errors
+      ERRORS=$(echo "$RECENT_LOGS" | grep -i 'error' | grep -v 'DEBUG\|proxyError' || true)
       if [ -n "$ERRORS" ]; then
-        echo "ℹ️ Recent errors detected:"
-        echo "$ERRORS"
+        echo ""
+        echo "❌ 에러 발견:"
+        echo "$ERRORS" | head -5
       fi
 
-      echo "✅ Last known status: Server is running"
+      # Check server status
+      SERVER_RUNNING=$(echo "$RECENT_LOGS" | grep -c 'Server is running' || true)
+      if [ "$SERVER_RUNNING" -gt "0" ]; then
+        echo ""
+        echo "✅ 서버 상태: 정상 운영 중"
+      fi
+
+      echo ""
+      echo "=== 📋 최근 로그 (마지막 10줄) ==="
+      echo "$RECENT_LOGS" | tail -10
+
   only:
     - main
   allow_failure: true
