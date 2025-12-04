@@ -10,8 +10,6 @@ services:
     volumes:
       - ./backend/dongsung.db:/app/backend/dongsung.db
       - ./backend/uploads:/app/backend/uploads
-    ports:
-      - "3001:3001"
     command: node backend/index.js
     networks:
       - traefik-network
@@ -26,6 +24,8 @@ services:
       - NODE_ENV=production
     volumes:
       - ./dist:/app/dist:ro
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
     healthcheck:
