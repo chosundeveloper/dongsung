@@ -4,6 +4,7 @@ FROM node:20-alpine as builder
 WORKDIR /app
 
 COPY package*.json ./
+COPY backend ./backend
 RUN npm install --legacy-peer-deps
 
 COPY . .
