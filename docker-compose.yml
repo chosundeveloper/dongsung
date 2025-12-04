@@ -1,5 +1,20 @@
 services:
-  dongsung:
+  backend:
+    image: e669204ed3c8
+    container_name: dongsung-backend
+    restart: always
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    volumes:
+      - ./backend/dongsung.db:/app/backend/dongsung.db
+      - ./backend/uploads:/app/backend/uploads
+    ports:
+      - "3001:3001"
+    networks:
+      - traefik-network
+
+  frontend:
     image: e669204ed3c8
     container_name: dongsung-app
     restart: always
@@ -8,6 +23,8 @@ services:
       - NODE_ENV=production
     volumes:
       - ./dist:/app/dist:ro
+    depends_on:
+      - backend
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/health"]
       interval: 10s
