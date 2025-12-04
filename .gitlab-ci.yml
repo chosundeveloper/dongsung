@@ -4,9 +4,7 @@ stages:
 deploy-production:
   stage: deploy
   script:
-    - echo "$SSH_PRIVATE_KEY" > key.pem
-    - chmod 600 key.pem
-    - ssh -i key.pem -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER "
         cd $DEPLOY_PATH &&
         git pull &&
         docker compose down &&
