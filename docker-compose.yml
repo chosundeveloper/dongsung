@@ -1,6 +1,7 @@
 services:
   backend:
-    image: e669204ed3c8
+    build: .
+    image: dongsung:latest
     container_name: dongsung-backend
     restart: always
     environment:
@@ -16,7 +17,8 @@ services:
       - traefik-network
 
   frontend:
-    image: e669204ed3c8
+    build: .
+    image: dongsung:latest
     container_name: dongsung-app
     restart: always
     environment:
