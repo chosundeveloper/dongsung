@@ -16,13 +16,18 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install build tools for native modules (sqlite3)
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package*.json ./
-RUN npm install --omit=dev --legacy-peer-deps
+COPY backend ./backend
+
+# Install dependencies including dev dependencies for native module compilation
+RUN npm install --legacy-peer-deps
+
+# Remove dev dependencies
+RUN npm prune --omit=dev
 
 COPY --from=builder /app/dist ./dist
-COPY backend ./backend
 COPY server.js .
 
 EXPOSE 3000 3001
