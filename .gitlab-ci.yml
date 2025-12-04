@@ -1,5 +1,6 @@
 stages:
   - deploy
+  - monitor
 
 deploy-production:
   stage: deploy
@@ -11,8 +12,52 @@ deploy-production:
     - |
       sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'DEPLOY_SCRIPT'
         cd $DEPLOY_PATH
+        git fetch --all
+        git checkout main
         docker compose down --remove-orphans
+        docker compose build --no-cache
         docker compose up -d
       DEPLOY_SCRIPT
   only:
     - main
+
+monitor-logs:
+  stage: monitor
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client sshpass curl
+    - ssh-keyscan -H $DEPLOY_SERVER >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - |
+      # Fetch recent logs from backend container
+      RECENT_LOGS=$(sshpass -p "$DEPLOY_PASSWORD" ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'LOG_SCRIPT'
+        cd $DEPLOY_PATH
+        docker logs dongsung-backend --tail 100
+      LOG_SCRIPT
+      )
+
+      # Check for auth failures
+      AUTH_FAILS=$(echo "$RECENT_LOGS" | grep -c "\[AUTH_FAIL\]" || echo "0")
+
+      if [ "$AUTH_FAILS" -gt "5" ]; then
+        echo "⚠️ WARNING: Multiple authentication failures detected: $AUTH_FAILS"
+
+        # Send notification (if webhook is configured)
+        if [ -n "$SLACK_WEBHOOK_URL" ]; then
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\": \"🚨 dongsung-backend: $AUTH_FAILS auth failures in last 100 logs\"}"
+        fi
+      fi
+
+      # Check for errors
+      ERRORS=$(echo "$RECENT_LOGS" | grep -i "error\|failed" | grep -v "DEBUG" | head -10)
+      if [ -n "$ERRORS" ]; then
+        echo "ℹ️ Recent errors detected:"
+        echo "$ERRORS"
+      fi
+
+      echo "✅ Last known status: Server is running"
+  only:
+    - main
+  allow_failure: true

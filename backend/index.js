@@ -258,12 +258,14 @@ app.post('/api/login', async (req, res) => {
         return res.status(500).json({ message: err.message });
       }
       if (!user) {
+        console.warn(`[AUTH_FAIL] Login attempt with non-existent user: ${username}`);
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
       // Check password
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
+        console.warn(`[AUTH_FAIL] Wrong password for user: ${username}`);
         return res.status(400).json({ message: 'Invalid credentials' });
       }
 
