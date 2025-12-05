@@ -83,7 +83,7 @@ const inputStyle = {
   '& .MuiInputLabel-root.Mui-focused': { color: '#818cf8' },
 };
 
-const initialShareForm = { authorName: '', password: '', content: '' };
+const initialShareForm = { content: '' };
 
 const ShareDialog = ({ open, mode, values, onClose, onSubmit, onChange }) => (
   <Dialog
@@ -201,8 +201,7 @@ const HomePage = () => {
   const [imagesToDelete, setImagesToDelete] = useState([]); // 삭제할 기존 이미지 ID
   const [fileAttachment, setFileAttachment] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
-  const [wordAuthorName, setWordAuthorName] = useState('');
-  const [wordPassword, setWordPassword] = useState('');
+  const [currentUsername] = useState(() => localStorage.getItem('username') || '사용자');
 
   const [shareForm, setShareForm] = useState(initialShareForm);
   const [shareFormOpen, setShareFormOpen] = useState(false);
@@ -230,8 +229,6 @@ const HomePage = () => {
     setImagePreviews([]);
     setFileAttachment(null);
     setDeletePassword('');
-    setWordAuthorName('');
-    setWordPassword('');
     setImagesToDelete([]);
     // 기존 이미지 설정
     if (dailyWord?.images?.length > 0) {
@@ -322,9 +319,6 @@ const HomePage = () => {
   const handleDailyWordSubmit = async (event) => {
     event.preventDefault();
     try {
-      if (!wordAuthorName.trim() || !wordPassword.trim()) {
-        throw new Error('이름과 비밀번호를 입력해 주세요.');
-      }
       // 기존 이미지가 있거나 새 이미지가 있어야 함
       const hasExistingImages = existingImages.length > 0;
       const hasNewImages = imageFiles.length > 0;
@@ -334,8 +328,8 @@ const HomePage = () => {
 
       const formData = new FormData();
       formData.append('date', selectedDateStr);
-      formData.append('authorName', wordAuthorName);
-      formData.append('password', wordPassword);
+      formData.append('authorName', currentUsername); // 자동으로 로그인한 사용자명 사용
+      formData.append('password', ''); // 빈 비밀번호 (또는 서버에서 무시)
       formData.append('title', `${dateLabel} 말씀`);
       formData.append('passage', '');
       formData.append('content', '사진 말씀입니다.');
@@ -362,8 +356,6 @@ const HomePage = () => {
       setImagePreviews([]);
       setImagesToDelete([]);
       setFileAttachment(null);
-      setWordAuthorName('');
-      setWordPassword('');
       setFeedback({ type: 'success', message: '말씀 사진이 등록되었습니다.' });
       setDailyWordFormOpen(false);
       fetchCalendarSummary();
@@ -396,7 +388,16 @@ const HomePage = () => {
   const handleShareSubmit = async (event) => {
     event.preventDefault();
     try {
-      const payload = { ...shareForm, date: selectedDateStr };
+      if (!shareForm.content.trim()) {
+        throw new Error('나눔 내용을 입력해 주세요.');
+      }
+
+      const payload = {
+        authorName: currentUsername, // 자동으로 로그인한 사용자명 사용
+        password: '', // 빈 비밀번호 (또는 서버에서 무시)
+        content: shareForm.content,
+        date: selectedDateStr,
+      };
       const data = await apiRequest(`/api/word-shares`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -553,23 +554,9 @@ const HomePage = () => {
                         오늘의 말씀 사진을 올려주세요.
                       </Typography>
 
-                      <TextField
-                        placeholder="이름"
-                        size="small"
-                        required
-                        value={wordAuthorName}
-                        onChange={(e) => setWordAuthorName(e.target.value)}
-                        sx={inputStyle}
-                      />
-                      <TextField
-                        placeholder="비밀번호 (수정/삭제 시 필요)"
-                        size="small"
-                        type="password"
-                        required
-                        value={wordPassword}
-                        onChange={(e) => setWordPassword(e.target.value)}
-                        sx={inputStyle}
-                      />
+                      <Typography variant="caption" sx={{ color: '#818cf8' }}>
+                        작성자: {currentUsername}
+                      </Typography>
 
                       <Stack direction="row" spacing={1}>
                         <Button component="label" variant="outlined" size="large" fullWidth sx={{ borderRadius: 2, color: '#cbd5e1', borderColor: '#475569', py: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -772,10 +759,9 @@ const HomePage = () => {
               <Paper sx={{ ...glassStyle, p: 3, borderRadius: 2 }}>
                 <Stack spacing={2} component="form" onSubmit={handleShareSubmit}>
                   <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>새로운 나눔 작성</Typography>
-                  <Stack direction="row" spacing={1}>
-                    <TextField placeholder="이름" size="small" required value={shareForm.authorName} onChange={(e) => handleShareFormChange('authorName', e.target.value)} sx={inputStyle} />
-                    <TextField placeholder="비밀번호" size="small" type="password" required value={shareForm.password} onChange={(e) => handleShareFormChange('password', e.target.value)} sx={inputStyle} />
-                  </Stack>
+                  <Typography variant="caption" sx={{ color: '#818cf8' }}>
+                    작성자: {currentUsername}
+                  </Typography>
                   <TextField placeholder="오늘 받은 은혜를 나누어 주세요..." multiline minRows={3} required value={shareForm.content} onChange={(e) => handleShareFormChange('content', e.target.value)} sx={inputStyle} />
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Button onClick={() => setShareFormOpen(false)} sx={{ color: '#94a3b8' }}>취소</Button>

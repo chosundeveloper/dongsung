@@ -31,6 +31,7 @@ const LoginPage = () => {
       }
 
       localStorage.setItem('token', data.token); // Store the JWT token
+      localStorage.setItem('username', username); // Store the username
       navigate('/'); // Redirect to home page
 
     } catch (err) {

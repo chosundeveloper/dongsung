@@ -19,6 +19,7 @@ build-image:
     - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA $CI_REGISTRY_IMAGE:latest
   only:
     - main
+    - master
 
 push-image:
   stage: push
@@ -36,6 +37,7 @@ push-image:
     - echo "✅ Image pushed successfully to $CI_REGISTRY_IMAGE"
   only:
     - main
+    - master
 
 deploy-production:
   stage: deploy
@@ -64,6 +66,7 @@ deploy-production:
       DEPLOY_SCRIPT
   only:
     - main
+    - master
   dependencies:
     - push-image
 
@@ -114,4 +117,5 @@ monitor-logs:
 
   only:
     - main
+    - master
   allow_failure: true
