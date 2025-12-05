@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
@@ -6,10 +9,11 @@ const path = require('path');
 const bcrypt = require('bcryptjs'); // For password hashing
 const jwt = require('jsonwebtoken'); // For JWT tokens
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createGitLabIssue, closeGitLabIssue } = require('./utils/gitlab');
 
 const app = express();
 const PORT = 3001;
-const JWT_SECRET = 'your_jwt_secret_key'; // CHANGE THIS IN PRODUCTION!
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key'; // CHANGE THIS IN PRODUCTION!
 const SALT_ROUNDS = 10;
 
 // --- 미들웨어 설정 ---
@@ -164,6 +168,24 @@ const db = new sqlite3.Database('./dongsung.db', (err) => {
         console.log('Table "gallery" is ready.');
         ensureColumn('gallery', 'userId', 'INTEGER');
       }
+    });
+
+    // 버그 리포트 테이블
+    db.run(`CREATE TABLE IF NOT EXISTS bug_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      severity TEXT DEFAULT 'medium',
+      authorName TEXT NOT NULL,
+      email TEXT,
+      gitlabIssueId INTEGER,
+      gitlabIssueUrl TEXT,
+      status TEXT DEFAULT 'pending',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+      if (err) console.error('Error creating bug_reports table', err.message);
+      else console.log('Table "bug_reports" is ready.');
     });
   }
 });
@@ -1039,6 +1061,162 @@ app.delete('/api/gallery/:id', authMiddleware, (req, res) => {
         return res.status(500).json({ message: deleteErr.message });
       }
       res.json({ message: '사진이 삭제되었습니다.' });
+    });
+  });
+});
+
+// === Bug Reports API ===
+
+// 버그 리포트 제출 (공개)
+app.post('/api/bug-reports', async (req, res) => {
+  const { title, description, category, severity, authorName, email } = req.body;
+
+  if (!title || !description || !authorName) {
+    return res.status(400).json({ message: '제목, 내용, 작성자 이름을 입력해 주세요.' });
+  }
+
+  try {
+    // 1. 데이터베이스에 저장
+    const sql = `INSERT INTO bug_reports (title, description, category, severity, authorName, email, status)
+                 VALUES (?, ?, ?, ?, ?, ?, 'pending')`;
+
+    db.run(sql, [title, description, category || 'general', severity || 'medium', authorName, email], async function (err) {
+      if (err) {
+        console.error('[BUG_REPORT] DB insert failed:', err.message);
+        return res.status(500).json({ message: '버그 리포트 저장 실패' });
+      }
+
+      const bugReportId = this.lastID;
+      let gitlabResult = null;
+
+      // 2. GitLab 이슈 생성 시도
+      try {
+        const issueDescription = `
+**버그 리포트 #${bugReportId}**
+
+**작성자:** ${authorName}
+${email ? `**이메일:** ${email}` : ''}
+**카테고리:** ${category || 'general'}
+**심각도:** ${severity || 'medium'}
+
+---
+
+${description}
+
+---
+
+*자동 생성된 이슈입니다.*
+        `.trim();
+
+        gitlabResult = await createGitLabIssue({
+          title: `[버그] ${title}`,
+          description: issueDescription,
+          labels: [category || 'general'],
+          severity: severity || 'medium'
+        });
+
+        // 3. GitLab 이슈 정보 업데이트
+        db.run(
+          `UPDATE bug_reports SET gitlabIssueId = ?, gitlabIssueUrl = ?, status = 'open' WHERE id = ?`,
+          [gitlabResult.iid, gitlabResult.web_url, bugReportId],
+          (updateErr) => {
+            if (updateErr) {
+              console.error('[BUG_REPORT] Failed to update GitLab info:', updateErr.message);
+            }
+          }
+        );
+
+        console.log(`[BUG_REPORT] Created GitLab issue #${gitlabResult.iid} for bug report #${bugReportId}`);
+
+        res.status(201).json({
+          message: '버그 리포트가 제출되었습니다.',
+          data: {
+            id: bugReportId,
+            title,
+            gitlabIssueUrl: gitlabResult.web_url,
+            gitlabIssueId: gitlabResult.iid
+          }
+        });
+
+      } catch (gitlabError) {
+        // GitLab 이슈 생성 실패해도 DB 저장은 성공
+        console.error('[BUG_REPORT] GitLab issue creation failed:', gitlabError.message);
+
+        res.status(201).json({
+          message: '버그 리포트가 제출되었습니다. (GitLab 연동 실패)',
+          data: {
+            id: bugReportId,
+            title,
+            gitlabError: gitlabError.message
+          }
+        });
+      }
+    });
+
+  } catch (err) {
+    console.error('[BUG_REPORT] Unexpected error:', err.message);
+    res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+  }
+});
+
+// 모든 버그 리포트 조회 (관리자용 - 인증 필요)
+app.get('/api/bug-reports', authMiddleware, (req, res) => {
+  const sql = `SELECT * FROM bug_reports ORDER BY createdAt DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: err.message });
+    }
+    res.json({ message: 'success', data: rows });
+  });
+});
+
+// 특정 버그 리포트 조회
+app.get('/api/bug-reports/:id', (req, res) => {
+  const { id } = req.params;
+  const sql = `SELECT * FROM bug_reports WHERE id = ?`;
+  db.get(sql, [id], (err, row) => {
+    if (err) {
+      return res.status(500).json({ message: err.message });
+    }
+    if (!row) {
+      return res.status(404).json({ message: '버그 리포트를 찾을 수 없습니다.' });
+    }
+    res.json({ message: 'success', data: row });
+  });
+});
+
+// 버그 리포트 상태 업데이트 (관리자용 - 인증 필요)
+app.put('/api/bug-reports/:id/status', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!['pending', 'open', 'in_progress', 'resolved', 'closed'].includes(status)) {
+    return res.status(400).json({ message: '유효하지 않은 상태입니다.' });
+  }
+
+  db.get('SELECT * FROM bug_reports WHERE id = ?', [id], async (err, report) => {
+    if (err) {
+      return res.status(500).json({ message: err.message });
+    }
+    if (!report) {
+      return res.status(404).json({ message: '버그 리포트를 찾을 수 없습니다.' });
+    }
+
+    // GitLab 이슈도 닫기 (상태가 closed일 때)
+    if (status === 'closed' && report.gitlabIssueId) {
+      try {
+        await closeGitLabIssue(report.gitlabIssueId);
+        console.log(`[BUG_REPORT] Closed GitLab issue #${report.gitlabIssueId}`);
+      } catch (gitlabError) {
+        console.error('[BUG_REPORT] Failed to close GitLab issue:', gitlabError.message);
+      }
+    }
+
+    db.run('UPDATE bug_reports SET status = ? WHERE id = ?', [status, id], function (updateErr) {
+      if (updateErr) {
+        return res.status(500).json({ message: updateErr.message });
+      }
+      res.json({ message: '상태가 업데이트되었습니다.', data: { id, status } });
     });
   });
 });
