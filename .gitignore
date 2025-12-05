@@ -1,5 +1,5 @@
 node_modules/
-dist/
+# dist/  # Temporarily commented to enable production deployment
 build/
 .env
 *.log
