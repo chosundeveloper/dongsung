@@ -49,6 +49,7 @@ const theme = createTheme({
         root: {
           background: 'rgba(15, 23, 42, 0.8)',
           backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
           boxShadow: 'none',
         },
