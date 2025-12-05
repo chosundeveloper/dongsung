@@ -148,17 +148,22 @@ const db = new sqlite3.Database('./dongsung.db', (err) => {
       else console.log('Table "word_shares" is ready.');
     });
 
-    // 사진 공유 갤러리 (비회원 작성)
+    // 사진 공유 갤러리 (회원 작성)
     db.run(`CREATE TABLE IF NOT EXISTS gallery (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       authorName TEXT NOT NULL,
-      password TEXT NOT NULL,
+      password TEXT,
       title TEXT,
       imageUrl TEXT NOT NULL,
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      userId INTEGER,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(userId) REFERENCES users(id)
     )`, (err) => {
       if (err) console.error('Error creating gallery table', err.message);
-      else console.log('Table "gallery" is ready.');
+      else {
+        console.log('Table "gallery" is ready.');
+        ensureColumn('gallery', 'userId', 'INTEGER');
+      }
     });
   }
 });
@@ -413,9 +418,15 @@ app.get('/api/posts/counts', (req, res) => {
 });
 
 
-// 새 게시물 작성 (POST /api/posts) - NO AUTH, supports multiple images
-app.post('/api/posts', upload.array('images', 10), (req, res) => {
-  const { title, content, createdAt, authorName, password } = req.body;
+// 새 게시물 작성 (POST /api/posts) - PROTECTED, supports multiple images
+app.post('/api/posts', authMiddleware, upload.array('images', 10), (req, res) => {
+  const { title, content, createdAt } = req.body;
+  const userId = req.user.id;
+  const username = req.user.username;
+
+  if (!title || !content) {
+    return res.status(400).json({ message: '제목과 내용을 입력해 주세요.' });
+  }
 
   // Handle multiple images - store first image in imageUrl for compatibility
   const imageUrl = req.files && req.files.length > 0 ? `/uploads/${req.files[0].filename}` : null;
@@ -423,35 +434,29 @@ app.post('/api/posts', upload.array('images', 10), (req, res) => {
   // Use provided createdAt or default to current timestamp
   const timestamp = createdAt ? createdAt : new Date().toISOString();
 
-  // Hash the password for security
-  bcrypt.hash(password, 10, (err, hashedPassword) => {
+  const sql = `INSERT INTO posts (title, content, imageUrl, authorName, userId, createdAt) VALUES (?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [title, content, imageUrl, username, userId, timestamp], function (err) {
     if (err) {
-      return res.status(500).json({ error: 'Password hashing failed' });
+      res.status(500).json({ error: err.message });
+      return;
     }
 
-    const sql = `INSERT INTO posts (title, content, imageUrl, authorName, password, createdAt) VALUES (?, ?, ?, ?, ?, ?)`;
-    db.run(sql, [title, content, imageUrl, authorName, hashedPassword, timestamp], function (err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
+    // For now, we're only storing the first image.
+    // To support multiple images properly, you'd need a separate images table
+    const allImageUrls = req.files ? req.files.map(f => `/uploads/${f.filename}`) : [];
+
+    res.status(201).json({
+      message: 'Post created successfully',
+      data: {
+        id: this.lastID,
+        title,
+        content,
+        imageUrl,
+        authorName: username,
+        userId,
+        createdAt: timestamp,
+        allImages: allImageUrls // Return all uploaded images
       }
-
-      // For now, we're only storing the first image.
-      // To support multiple images properly, you'd need a separate images table
-      const allImageUrls = req.files ? req.files.map(f => `/uploads/${f.filename}`) : [];
-
-      res.status(201).json({
-        message: 'Post created successfully',
-        data: {
-          id: this.lastID,
-          title,
-          content,
-          imageUrl,
-          authorName,
-          createdAt: timestamp,
-          allImages: allImageUrls // Return all uploaded images
-        }
-      });
     });
   });
 });
@@ -986,46 +991,35 @@ app.get('/api/gallery', (req, res) => {
   });
 });
 
-// 갤러리에 사진 업로드
-app.post('/api/gallery', upload.single('image'), (req, res) => {
-  const { authorName, password, title } = req.body;
+// 갤러리에 사진 업로드 (PROTECTED)
+app.post('/api/gallery', authMiddleware, upload.single('image'), (req, res) => {
+  const { title } = req.body;
   const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  const userId = req.user.id;
+  const username = req.user.username;
 
-  if (!authorName || !password) {
-    return res.status(400).json({ message: '이름과 비밀번호를 입력해 주세요.' });
-  }
   if (!imageUrl) {
     return res.status(400).json({ message: '사진을 선택해 주세요.' });
   }
 
-  bcrypt.hash(password, SALT_ROUNDS, (hashErr, hash) => {
-    if (hashErr) {
-      return res.status(500).json({ message: hashErr.message });
+  const sql = `INSERT INTO gallery (authorName, title, imageUrl, userId) VALUES (?, ?, ?, ?)`;
+  db.run(sql, [username, title || '', imageUrl, userId], function (err) {
+    if (err) {
+      return res.status(500).json({ message: err.message });
     }
-
-    const sql = `INSERT INTO gallery (authorName, password, title, imageUrl) VALUES (?, ?, ?, ?)`;
-    db.run(sql, [authorName, hash, title || '', imageUrl], function (err) {
-      if (err) {
-        return res.status(500).json({ message: err.message });
+    db.get(`SELECT id, authorName, title, imageUrl, createdAt FROM gallery WHERE id = ?`, [this.lastID], (fetchErr, row) => {
+      if (fetchErr) {
+        return res.status(500).json({ message: fetchErr.message });
       }
-      db.get(`SELECT id, authorName, title, imageUrl, createdAt FROM gallery WHERE id = ?`, [this.lastID], (fetchErr, row) => {
-        if (fetchErr) {
-          return res.status(500).json({ message: fetchErr.message });
-        }
-        res.status(201).json({ message: '사진이 등록되었습니다.', data: sanitizeGallery(row) });
-      });
+      res.status(201).json({ message: '사진이 등록되었습니다.', data: sanitizeGallery(row) });
     });
   });
 });
 
-// 갤러리 사진 삭제
-app.delete('/api/gallery/:id', (req, res) => {
+// 갤러리 사진 삭제 (PROTECTED - 본인 사진만)
+app.delete('/api/gallery/:id', authMiddleware, (req, res) => {
   const { id } = req.params;
-  const { password } = req.body;
-
-  if (!password) {
-    return res.status(400).json({ message: '비밀번호를 입력해 주세요.' });
-  }
+  const userId = req.user.id;
 
   db.get('SELECT * FROM gallery WHERE id = ?', [id], (err, row) => {
     if (err) {
@@ -1035,20 +1029,16 @@ app.delete('/api/gallery/:id', (req, res) => {
       return res.status(404).json({ message: '사진을 찾을 수 없습니다.' });
     }
 
-    bcrypt.compare(password, row.password, (compareErr, isMatch) => {
-      if (compareErr) {
-        return res.status(500).json({ message: compareErr.message });
-      }
-      if (!isMatch) {
-        return res.status(403).json({ message: '비밀번호가 일치하지 않습니다.' });
-      }
+    // Check if the photo belongs to the current user
+    if (row.userId !== userId) {
+      return res.status(403).json({ message: '본인의 사진만 삭제할 수 있습니다.' });
+    }
 
-      db.run('DELETE FROM gallery WHERE id = ?', [id], function (deleteErr) {
-        if (deleteErr) {
-          return res.status(500).json({ message: deleteErr.message });
-        }
-        res.json({ message: '사진이 삭제되었습니다.' });
-      });
+    db.run('DELETE FROM gallery WHERE id = ?', [id], function (deleteErr) {
+      if (deleteErr) {
+        return res.status(500).json({ message: deleteErr.message });
+      }
+      res.json({ message: '사진이 삭제되었습니다.' });
     });
   });
 });

@@ -5,8 +5,6 @@ import { format } from 'date-fns';
 import { API_URL } from '../utils/api';
 
 const PostForm = ({ onCancel, onSave, initialDate }) => {
-  const [authorName, setAuthorName] = useState('');
-  const [password, setPassword] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [imageFiles, setImageFiles] = useState([]);
@@ -48,9 +46,13 @@ const PostForm = ({ onCancel, onSave, initialDate }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
     const formData = new FormData();
-    formData.append('authorName', authorName);
-    formData.append('password', password);
     formData.append('title', title);
     formData.append('content', content);
 
@@ -66,6 +68,9 @@ const PostForm = ({ onCancel, onSave, initialDate }) => {
 
     fetch(`${API_URL}/api/posts`, {
       method: 'POST',
+      headers: {
+        'x-auth-token': token,
+      },
       body: formData,
     })
       .then(response => {
@@ -117,55 +122,6 @@ const PostForm = ({ onCancel, onSave, initialDate }) => {
         ✏️ 새 글 작성 {initialDate && `(${format(initialDate, 'yyyy년 MM월 dd일')})`}
       </Typography>
       <Stack spacing={3}>
-        <TextField
-          label="작성자 이름"
-          id="authorName"
-          value={authorName}
-          onChange={(e) => setAuthorName(e.target.value)}
-          required
-          fullWidth
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 3,
-              fontSize: '1.1rem',
-              '&:hover fieldset': {
-                borderColor: '#667eea',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: '#667eea',
-                borderWidth: 2,
-              }
-            },
-            '& .MuiInputLabel-root.Mui-focused': {
-              color: '#667eea',
-            }
-          }}
-        />
-        <TextField
-          label="비밀번호 (수정/삭제 시 필요)"
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          fullWidth
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 3,
-              fontSize: '1.1rem',
-              '&:hover fieldset': {
-                borderColor: '#667eea',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: '#667eea',
-                borderWidth: 2,
-              }
-            },
-            '& .MuiInputLabel-root.Mui-focused': {
-              color: '#667eea',
-            }
-          }}
-        />
         <TextField
           label="제목"
           id="title"

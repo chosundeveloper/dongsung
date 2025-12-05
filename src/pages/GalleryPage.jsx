@@ -40,12 +40,10 @@ const GalleryPage = () => {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, photo: null, password: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, photo: null });
   const [feedback, setFeedback] = useState(null);
 
   // Upload form state
-  const [authorName, setAuthorName] = useState('');
-  const [password, setPassword] = useState('');
   const [title, setTitle] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -77,8 +75,9 @@ const GalleryPage = () => {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!authorName || !password) {
-      setFeedback({ type: 'error', message: '이름과 비밀번호를 입력해 주세요.' });
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setFeedback({ type: 'error', message: '로그인이 필요합니다.' });
       return;
     }
     if (!imageFile) {
@@ -89,20 +88,25 @@ const GalleryPage = () => {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('authorName', authorName);
-      formData.append('password', password);
       formData.append('title', title);
       formData.append('image', imageFile);
 
-      await apiRequest('/api/gallery', {
+      const response = await fetch(`${API_URL}/api/gallery`, {
         method: 'POST',
+        headers: {
+          'x-auth-token': token,
+        },
         body: formData,
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '사진 업로드에 실패했습니다.');
+      }
+
       // Refresh the photo list from server
       await fetchPhotos();
       setUploadOpen(false);
-      setAuthorName('');
-      setPassword('');
       setTitle('');
       setImageFile(null);
       setImagePreview(null);
@@ -115,18 +119,27 @@ const GalleryPage = () => {
   };
 
   const handleDelete = async () => {
-    if (!deleteDialog.password) {
-      setFeedback({ type: 'error', message: '비밀번호를 입력해 주세요.' });
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setFeedback({ type: 'error', message: '로그인이 필요합니다.' });
       return;
     }
 
     try {
-      await apiRequest(`/api/gallery/${deleteDialog.photo.id}`, {
+      const response = await fetch(`${API_URL}/api/gallery/${deleteDialog.photo.id}`, {
         method: 'DELETE',
-        body: JSON.stringify({ password: deleteDialog.password }),
+        headers: {
+          'x-auth-token': token,
+        },
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '사진 삭제에 실패했습니다.');
+      }
+
       setPhotos(prev => prev.filter(p => p.id !== deleteDialog.photo.id));
-      setDeleteDialog({ open: false, photo: null, password: '' });
+      setDeleteDialog({ open: false, photo: null });
       setSelectedImage(null);
       setFeedback({ type: 'success', message: '사진이 삭제되었습니다.' });
     } catch (error) {
@@ -184,27 +197,6 @@ const GalleryPage = () => {
               새 사진 올리기
             </Typography>
             <Stack spacing={2} component="form" onSubmit={handleUpload}>
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  placeholder="이름"
-                  size="small"
-                  required
-                  value={authorName}
-                  onChange={(e) => setAuthorName(e.target.value)}
-                  sx={inputStyle}
-                  fullWidth
-                />
-                <TextField
-                  placeholder="비밀번호"
-                  type="password"
-                  size="small"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  sx={inputStyle}
-                  fullWidth
-                />
-              </Stack>
               <TextField
                 placeholder="제목 (선택)"
                 size="small"
@@ -328,7 +320,7 @@ const GalleryPage = () => {
             <CloseIcon />
           </IconButton>
           <IconButton
-            onClick={() => setDeleteDialog({ open: true, photo: selectedImage, password: '' })}
+            onClick={() => setDeleteDialog({ open: true, photo: selectedImage })}
             sx={{
               position: 'absolute',
               top: 8,
@@ -359,23 +351,14 @@ const GalleryPage = () => {
         {/* Delete Confirmation Dialog */}
         <Dialog
           open={deleteDialog.open}
-          onClose={() => setDeleteDialog({ open: false, photo: null, password: '' })}
+          onClose={() => setDeleteDialog({ open: false, photo: null })}
           PaperProps={{ sx: { bgcolor: '#1e293b', color: '#fff', borderRadius: 3 } }}
         >
           <DialogContent>
-            <Typography sx={{ mb: 2 }}>삭제하려면 비밀번호를 입력하세요.</Typography>
-            <TextField
-              type="password"
-              placeholder="비밀번호"
-              size="small"
-              fullWidth
-              value={deleteDialog.password}
-              onChange={(e) => setDeleteDialog(prev => ({ ...prev, password: e.target.value }))}
-              sx={inputStyle}
-            />
+            <Typography sx={{ mb: 2 }}>정말로 삭제하시겠습니까?</Typography>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
-            <Button onClick={() => setDeleteDialog({ open: false, photo: null, password: '' })} sx={{ color: '#94a3b8' }}>
+            <Button onClick={() => setDeleteDialog({ open: false, photo: null })} sx={{ color: '#94a3b8' }}>
               취소
             </Button>
             <Button onClick={handleDelete} variant="contained" color="error" sx={{ borderRadius: 2 }}>
