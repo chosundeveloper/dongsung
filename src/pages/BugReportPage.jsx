@@ -206,15 +206,19 @@ const BugReportPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.title.trim()) {
+    const trimmedTitle = formData.title.trim();
+    const trimmedDescription = formData.description.trim();
+    const trimmedReporter = formData.reporter.trim();
+
+    if (!trimmedTitle) {
       setError('제목을 입력해주세요.');
       return;
     }
-    if (!formData.description.trim()) {
+    if (!trimmedDescription) {
       setError('설명을 입력해주세요.');
       return;
     }
-    if (!formData.reporter.trim()) {
+    if (!trimmedReporter) {
       setError('작성자를 입력해주세요.');
       return;
     }
@@ -226,7 +230,12 @@ const BugReportPage = () => {
     } else {
       // Create new bug via API
       try {
-        await createIssueOnTracker(formData);
+        await createIssueOnTracker({
+          ...formData,
+          title: trimmedTitle,
+          description: trimmedDescription,
+          reporter: trimmedReporter,
+        });
         // 생성 후 목록 새로고침
         await loadBugs();
         handleCloseDialog();
@@ -239,17 +248,12 @@ const BugReportPage = () => {
 
   const handleStatusChange = (bugId, newStatus) => {
     // API에서 수정 미지원 - 로컬 UI만 업데이트 (새로고침 시 원복됨)
-    const updatedBugs = bugs.map(bug =>
-      bug.id === bugId
-        ? { ...bug, status: newStatus, updatedAt: new Date().toISOString() }
-        : bug
-    );
-    setBugs(updatedBugs);
+    setApiError('⚠️ 상태 변경 기능은 아직 지원되지 않습니다. 등록된 이슈만 조회할 수 있습니다.');
   };
 
   const handleDelete = (bugId) => {
     // API에서 삭제 미지원
-    window.alert('삭제 기능은 현재 지원되지 않습니다.');
+    setApiError('⚠️ 삭제 기능은 아직 지원되지 않습니다. 관리자에게 문의해주세요.');
   };
 
   if (loading) {
@@ -402,6 +406,8 @@ const BugReportPage = () => {
                         <Select
                           value={bug.status}
                           onChange={(e) => handleStatusChange(bug.id, e.target.value)}
+                          disabled
+                          title="상태 변경 기능은 아직 지원되지 않습니다"
                           sx={{
                             bgcolor: `${statusInfo.color}20`,
                             color: statusInfo.color,
@@ -457,11 +463,13 @@ const BugReportPage = () => {
                         </Typography>
                       )}
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'none', gap: 1 }}>
                       <Button
                         size="small"
                         onClick={() => handleOpenDialog(bug)}
                         sx={{ color: '#3b82f6' }}
+                        disabled
+                        title="수정 기능은 아직 지원되지 않습니다"
                       >
                         수정
                       </Button>
@@ -469,6 +477,8 @@ const BugReportPage = () => {
                         size="small"
                         onClick={() => handleDelete(bug.id)}
                         sx={{ color: '#ef4444' }}
+                        disabled
+                        title="삭제 기능은 아직 지원되지 않습니다"
                       >
                         삭제
                       </Button>
@@ -570,6 +580,8 @@ const BugReportPage = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
+            disabled={editingBug}
+            title={editingBug ? '수정 기능은 아직 지원되지 않습니다' : ''}
             sx={{
               background: 'linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)',
               fontWeight: 600,
