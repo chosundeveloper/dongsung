@@ -6,28 +6,22 @@ import BugReportPage from './BugReportPage';
 
 const mockBugsData = [
   {
-    key: 'BUG-1',
     id: 1,
     title: '로그인 버튼 작동 안 함',
     description: '로그인 버튼을 클릭해도 반응이 없음',
-    priority: 'high',
-    status: 'backlog',
-    assignee: '테스터',
+    severity: 'high',
+    status: 'open',
+    authorName: '테스터',
     createdAt: '2025-12-01T10:00:00Z',
-    updatedAt: '2025-12-01T10:00:00Z',
-    projectName: 'dongsung',
   },
   {
-    key: 'BUG-2',
     id: 2,
     title: '페이지 로딩 느림',
     description: '홈페이지 로딩이 매우 느림',
-    priority: 'medium',
-    status: 'inProgress',
-    assignee: '개발자',
+    severity: 'medium',
+    status: 'in_progress',
+    authorName: '개발자',
     createdAt: '2025-12-02T10:00:00Z',
-    updatedAt: '2025-12-02T10:00:00Z',
-    projectName: 'dongsung',
   },
 ];
 
@@ -104,7 +98,7 @@ describe('BugReportPage', () => {
       renderBugReportPage();
 
       await waitFor(() => {
-        expect(screen.getByText('이슈 목록을 불러오는데 실패했습니다.')).toBeInTheDocument();
+        expect(screen.getByText('버그 목록을 불러오는데 실패했습니다.')).toBeInTheDocument();
       });
     });
   });
@@ -253,7 +247,7 @@ describe('BugReportPage', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            data: { key: 'BUG-3', id: 3 },
+            data: { id: 3, title: '새 버그', description: '새 버그 설명' },
           }),
         })
         .mockResolvedValueOnce({
@@ -279,7 +273,7 @@ describe('BugReportPage', () => {
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining('/issues'),
+          expect.stringContaining('/bug-reports'),
           expect.objectContaining({
             method: 'POST',
             headers: expect.objectContaining({
@@ -317,7 +311,7 @@ describe('BugReportPage', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(screen.getByText('이슈 생성에 실패했습니다. 다시 시도해주세요.')).toBeInTheDocument();
+        expect(screen.getByText('버그 리포트 생성에 실패했습니다. 다시 시도해주세요.')).toBeInTheDocument();
       });
     });
   });

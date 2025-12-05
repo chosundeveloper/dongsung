@@ -24,95 +24,47 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
-// 개발환경에서는 Vite 프록시 사용, 프로덕션에서는 직접 호출
-const TRACKER_API_BASE = import.meta.env.DEV
-  ? '/tracker-api'
-  : 'http://tracker25.duckdns.org/api';
-const TRACKER_API_KEY = 'pt_hzfEbq9xDbekwhCbe20IbPbj';
+// 백엔드 API 엔드포인트
+const API_BASE = '/api';
 
-// Tracker API status → 내부 status 매핑
-const mapStatusFromTracker = (status) => {
-  const mapping = {
-    backlog: 'open',
-    selected: 'open',
-    inProgress: 'in_progress',
-    inReview: 'resolved',
-    done: 'closed',
-  };
-  return mapping[status] || 'open';
-};
-
-// 내부 status → Tracker API status 매핑
-const mapStatusToTracker = (status) => {
-  const mapping = {
-    open: 'backlog',
-    in_progress: 'inProgress',
-    resolved: 'inReview',
-    closed: 'done',
-  };
-  return mapping[status] || 'backlog';
-};
-
-// Tracker API priority → 내부 priority 매핑
-const mapPriorityFromTracker = (priority) => {
-  const mapping = {
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    blocker: 'critical',
-  };
-  return mapping[priority] || 'medium';
-};
-
-// 내부 priority → Tracker API priority 매핑
-const mapPriorityToTracker = (priority) => {
-  const mapping = {
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    critical: 'blocker',
-  };
-  return mapping[priority] || 'medium';
-};
-
-// API에서 이슈 목록 조회 (dongsung 프로젝트만 필터링)
-const PROJECT_NAME = 'dongsung';
-
-const fetchIssuesFromTracker = async () => {
-  const res = await fetch(`${TRACKER_API_BASE}/issues`);
-  if (!res.ok) throw new Error('Failed to fetch issues');
+// 백엔드에서 버그 리포트 목록 조회
+const fetchBugReports = async () => {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API_BASE}/bug-reports`, {
+    headers: {
+      'x-auth-token': token || '',
+    },
+  });
+  if (!res.ok) throw new Error('Failed to fetch bug reports');
   const { data } = await res.json();
-  // dongsung 프로젝트 이슈만 필터링
-  const filtered = data.filter((issue) => issue.projectName === PROJECT_NAME);
-  return filtered.map((issue) => ({
-    id: issue.key || issue.id?.toString(),
-    title: issue.title,
-    description: issue.description || '',
-    priority: mapPriorityFromTracker(issue.priority),
-    status: mapStatusFromTracker(issue.status),
-    reporter: issue.assignee || '',
-    createdAt: issue.createdAt || new Date().toISOString(),
-    updatedAt: issue.updatedAt || new Date().toISOString(),
+  return data.map((report) => ({
+    id: report.id,
+    title: report.title,
+    description: report.description,
+    priority: report.severity || 'medium',
+    status: report.status || 'pending',
+    reporter: report.authorName || '',
+    createdAt: report.createdAt || new Date().toISOString(),
+    updatedAt: report.createdAt || new Date().toISOString(),
   }));
 };
 
-// API에 이슈 생성
-const createIssueOnTracker = async (bug) => {
-  const res = await fetch(`${TRACKER_API_BASE}/issues`, {
+// 백엔드에 버그 리포트 생성
+const createBugReport = async (bug) => {
+  const res = await fetch(`${API_BASE}/bug-reports`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': TRACKER_API_KEY,
     },
     body: JSON.stringify({
       title: bug.title,
       description: bug.description,
-      priority: mapPriorityToTracker(bug.priority),
-      status: mapStatusToTracker(bug.status),
-      assignee: bug.reporter,
+      severity: bug.priority,
+      authorName: bug.reporter,
+      category: 'general',
     }),
   });
-  if (!res.ok) throw new Error('Failed to create issue');
+  if (!res.ok) throw new Error('Failed to create bug report');
   const { data } = await res.json();
   return data;
 };
@@ -149,16 +101,16 @@ const BugReportPage = () => {
   const [error, setError] = useState('');
   const [apiError, setApiError] = useState('');
 
-  // Load bugs from Tracker API
+  // Load bugs from backend API
   const loadBugs = async () => {
     setLoading(true);
     setApiError('');
     try {
-      const issues = await fetchIssuesFromTracker();
-      setBugs(issues);
+      const reports = await fetchBugReports();
+      setBugs(reports);
     } catch (err) {
-      console.error('[tracker] Failed to load issues', err);
-      setApiError('이슈 목록을 불러오는데 실패했습니다.');
+      console.error('[backend] Failed to load bug reports', err);
+      setApiError('버그 목록을 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -228,9 +180,9 @@ const BugReportPage = () => {
       setError('수정 기능은 현재 지원되지 않습니다.');
       return;
     } else {
-      // Create new bug via API
+      // Create new bug report via backend API
       try {
-        await createIssueOnTracker({
+        await createBugReport({
           ...formData,
           title: trimmedTitle,
           description: trimmedDescription,
@@ -240,8 +192,8 @@ const BugReportPage = () => {
         await loadBugs();
         handleCloseDialog();
       } catch (err) {
-        console.error('[tracker] Failed to create issue', err);
-        setError('이슈 생성에 실패했습니다. 다시 시도해주세요.');
+        console.error('[backend] Failed to create bug report', err);
+        setError('버그 리포트 생성에 실패했습니다. 다시 시도해주세요.');
       }
     }
   };
